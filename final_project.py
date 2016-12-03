@@ -172,7 +172,7 @@ def main():
 
     with tf.Session() as sess:
         # create the model
-        model = PredictionModel(sess, train_files, [192, 128, 3], len(labels), 1e-3, 50)
+        model = PredictionModel(sess, train_files, [192, 128, 3], len(labels), 1e-2, 50)
         model.train(2)
         model.test(test_files)
 
