@@ -1,5 +1,7 @@
 import tensorflow as tf
 import numpy as np
+import argparse
+import os.path
 from glob import iglob, glob
 from scipy.misc import imread
 from random import shuffle
@@ -71,6 +73,9 @@ class PredictionModel(object):
 
         self.build_model()
 
+        # create a Saver instance for saving and loading the model
+        self.saver = tf.train.Saver()
+
     def build_model(self):
         """
         Construct the TensorFlow computation graph
@@ -126,6 +131,9 @@ class PredictionModel(object):
                 cur_loss = self.loss.eval(feed_dict={self.X: batch_x, self.Y: batch_y, self.keep_prob: 1.0})
                 print("[Epoch %d | Batch %d/%d] Loss=%f" % (epoch+1, batch+1, num_batches, cur_loss))
 
+        # save the trained model in case we want to reuse it later
+        self.save()
+
     def test(self, test_files):
         """
         Evaluate the trained model on a held-out test set
@@ -151,9 +159,23 @@ class PredictionModel(object):
         print(classification_report(y_true, y_pred))
         print(confusion_matrix(y_true, y_pred))
 
+    def save(self):
+        self.saver.save(self.sess, "trained_model")
+
+    def load(self):
+        ckpt = tf.train.get_checkpoint_state('.')
+        print(ckpt.model_checkpoint_path)
+        self.saver.restore(self.sess, tf.train.latest_checkpoint('./'))
+
 def main():
     #labels = ["Action", "Comedy", "Documentary", "Horror", "Western"]
     labels = ["Action", "Comedy", "Horror", "Western"]
+
+    # parse command line arguments
+    parser = argparse.ArgumentParser(description="Runs a machine learning model for automatic movie poster genre classification")
+    parser.add_argument('--load', action='store_true',
+                        help="Load a pre-trained model from disk instead of training from scratch")
+    args = parser.parse_args()
 
     # load the image data
     images = []
@@ -173,7 +195,12 @@ def main():
     with tf.Session() as sess:
         # create the model
         model = PredictionModel(sess, train_files, [192, 128, 3], len(labels), 1e-2, 50)
-        model.train(2)
+        if args.load:
+            # load pre-trained model from disk
+            model.load()
+        else:
+            # train the model
+            model.train(3)
         model.test(test_files)
 
 if __name__ == '__main__':
