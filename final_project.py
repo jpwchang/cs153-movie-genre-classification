@@ -2,8 +2,9 @@ import tensorflow as tf
 import numpy as np
 import argparse
 import os.path
+import csv
 from glob import iglob, glob
-from scipy.misc import imread
+from scipy.misc import imread, imsave
 from random import shuffle
 from sklearn.metrics import confusion_matrix, classification_report
 
@@ -134,7 +135,7 @@ class PredictionModel(object):
         # save the trained model in case we want to reuse it later
         self.save()
 
-    def test(self, test_files):
+    def test(self, test_files, label_names):
         """
         Evaluate the trained model on a held-out test set
         """
@@ -158,6 +159,59 @@ class PredictionModel(object):
         # compute performance metrics
         print(classification_report(y_true, y_pred))
         print(confusion_matrix(y_true, y_pred))
+
+        print("Saving results to results.csv...")
+        self.write_results(test_files, num_batches*self.batch_size, y_true, y_pred, label_names)
+
+    def write_results(self, test_files, num_files, y_true, y_pred, label_names):
+        """
+        Save test results to CSV
+        """
+
+        # initialize a CSV writer
+        with open('results.csv', 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            # write the header
+            writer.writerow(['filename', 'correct genre', 'predicted genre'])
+            for i in range(num_files):
+                img_name = test_files[i][0].split('/')[-1]
+                writer.writerow([img_name, label_names[int(y_true[i])], label_names[int(y_pred[i])]])
+
+    def save_first_layer_kernels(self):
+        """
+        Save the convolution kernels from the first convolutional layer to a file
+        """
+        kernel_matrix = tf.contrib.framework.get_model_variables(scope='Conv')[0].eval()
+        # there are 64 convolution kernels in the first layer. We will stick them
+        # into a matrix of 8 kernels in each dimension. We will pad each kernel with
+        # a black border to distinguish them. Thus, the total image size will be
+        # 56x56
+        output_r = np.zeros([56,56])
+        output_g = np.zeros([56,56])
+        output_b = np.zeros([56,56])
+        for i in range(64):
+            kernel_r = kernel_matrix[:,:,0,i]
+            kernel_g = kernel_matrix[:,:,1,i]
+            kernel_b = kernel_matrix[:,:,2,i]
+            # pad each kernel with a black border
+            padded_kernel_r = np.zeros([7,7])
+            padded_kernel_r[1:6,1:6] = kernel_r
+            padded_kernel_g = np.zeros([7,7])
+            padded_kernel_g[1:6,1:6] = kernel_g
+            padded_kernel_b = np.zeros([7,7])
+            padded_kernel_b[1:6,1:6] = kernel_b
+            # stich the kernels into a single image
+            x_out = (i % 8) * 7
+            y_out = (i // 8) * 7
+            output_r[y_out:y_out+7, x_out:x_out+7] = padded_kernel_r
+            output_g[y_out:y_out+7, x_out:x_out+7] = padded_kernel_g
+            output_b[y_out:y_out+7, x_out:x_out+7] = padded_kernel_b
+
+        # save the results to an image
+        imsave('kernels_r.png', output_r)
+        imsave('kernels_g.png', output_g)
+        imsave('kernels_b.png', output_b)
+
 
     def save(self):
         self.saver.save(self.sess, "trained_model")
@@ -201,7 +255,10 @@ def main():
         else:
             # train the model
             model.train(3)
-        model.test(test_files)
+        print("Saving learned kernels...")
+        kernels = model.save_first_layer_kernels()
+        print("Kernels saved!")
+        model.test(test_files, labels)
 
 if __name__ == '__main__':
     main()
